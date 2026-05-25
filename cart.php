@@ -163,59 +163,66 @@ $flash = getFlash();
                             <?php foreach ($cartItems as $item): ?>
                                 <article class="cart-item" data-product-id="<?= (int) $item['id'] ?>">
                                     <!-- Item Image -->
-                                    <div class="cart-item-image">
+                                    <div class="cart-item-image-wrapper">
                                         <img
                                             src="<?= htmlspecialchars($item['image_url'], ENT_QUOTES, 'UTF-8') ?>"
                                             alt="<?= htmlspecialchars($item['title'], ENT_QUOTES, 'UTF-8') ?>"
+                                            class="cart-item-image"
                                             loading="lazy"
-                                            onerror="this.src='https://picsum.photos/seed/fallback/150/150'; this.onerror=null;"
+                                            onerror="this.src='https://picsum.photos/seed/fallback/200/200'; this.onerror=null;"
                                         />
                                     </div>
 
                                     <!-- Item Details -->
                                     <div class="cart-item-details">
                                         <h3 class="cart-item-title"><?= htmlspecialchars($item['title'], ENT_QUOTES, 'UTF-8') ?></h3>
-                                        <p class="cart-item-price">$<?= number_format((float) $item['price'], 2) ?></p>
+                                        <div class="cart-item-price-stock">
+                                            <span class="cart-item-price">$<?= number_format((float) $item['price'], 2) ?></span>
+                                            <span class="cart-item-stock-info">Stock: <?= (int) $item['stock'] ?></span>
+                                        </div>
                                     </div>
 
                                     <!-- Quantity Controls -->
-                                    <div class="cart-item-controls">
+                                    <div class="cart-item-actions">
                                         <form method="POST" action="cart.php" class="quantity-form" onsubmit="return validateQuantity(this)">
                                             <input type="hidden" name="action" value="update_quantity">
                                             <input type="hidden" name="product_id" value="<?= (int) $item['id'] ?>">
                                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                                             
-                                            <div class="quantity-input-group">
-                                                <button type="submit" name="adjust" value="minus" class="qty-btn qty-btn--minus" aria-label="Decrease quantity">−</button>
-                                                <input 
-                                                    type="number" 
-                                                    name="quantity" 
-                                                    value="<?= (int) $item['quantity'] ?>" 
-                                                    min="1" 
-                                                    max="<?= (int) $item['stock'] ?>"
-                                                    class="qty-input"
-                                                    aria-label="Quantity"
-                                                >
-                                                <button type="submit" name="adjust" value="plus" class="qty-btn qty-btn--plus" aria-label="Increase quantity">+</button>
+                                            <div class="quantity-controls">
+                                                <span class="qty-label">Qty:</span>
+                                                <div class="quantity-input-group">
+                                                    <button type="submit" name="adjust" value="minus" class="qty-btn qty-btn--minus" aria-label="Decrease quantity">−</button>
+                                                    <input 
+                                                        type="number" 
+                                                        name="quantity" 
+                                                        value="<?= (int) $item['quantity'] ?>" 
+                                                        min="1" 
+                                                        max="<?= (int) $item['stock'] ?>"
+                                                        class="qty-input"
+                                                        aria-label="Quantity"
+                                                    >
+                                                    <button type="submit" name="adjust" value="plus" class="qty-btn qty-btn--plus" aria-label="Increase quantity">+</button>
+                                                </div>
                                             </div>
                                         </form>
-                                    </div>
 
-                                    <!-- Item Total -->
-                                    <div class="cart-item-total">
-                                        <span class="cart-item-total-label">Total:</span>
-                                        <span class="cart-item-total-amount">$<?= number_format((float) $item['itemTotal'], 2) ?></span>
-                                    </div>
+                                        <!-- Item Total -->
+                                        <div class="cart-item-total">
+                                            <span class="cart-item-total-label">Total</span>
+                                            <span class="cart-item-total-amount">$<?= number_format((float) $item['itemTotal'], 2) ?></span>
+                                        </div>
 
-                                    <!-- Remove Button -->
-                                    <form method="POST" action="cart.php" class="cart-item-remove" onsubmit="return confirm('Remove this item from cart?')">
-                                        <input type="hidden" name="action" value="remove_item">
-                                        <input type="hidden" name="product_id" value="<?= (int) $item['id'] ?>">
-                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
-                                        <button type="submit" class="btn btn--ghost btn--sm" aria-label="Remove from cart">
-                                            ✕
-                                        </button>
-                                    </form>
+                                        <!-- Remove Button -->
+                                        <form method="POST" action="cart.php" class="cart-item-remove-form" onsubmit="return confirm('Remove this item from cart?')">
+                                            <input type="hidden" name="action" value="remove_item">
+                                            <input type="hidden" name="product_id" value="<?= (int) $item['id'] ?>">
+                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                                            <button type="submit" class="btn-remove" aria-label="Remove from cart" title="Remove from cart">
+                                                <span>🗑️</span>
+                                            </button>
+                                        </form>
+                                    </div>
                                 </article>
                             <?php endforeach; ?>
                         </div>
