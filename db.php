@@ -107,3 +107,22 @@ function requireLogin(): void
         redirect('login.php');
     }
 }
+
+/**
+ * Return true if the current user is an admin.
+ */
+function isAdmin(): bool
+{
+    return isset($_SESSION['user_id']) && isset($_SESSION['is_admin']) && $_SESSION['is_admin'] === true;
+}
+
+/**
+ * Require admin access — redirect non-admins to homepage.
+ */
+function requireAdmin(): void
+{
+    if (!isAdmin()) {
+        setFlash('error', 'You do not have permission to access that page.');
+        redirect('index.php');
+    }
+}

@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     name       VARCHAR(120)  NOT NULL,
     email      VARCHAR(180)  NOT NULL,
     password   VARCHAR(255)  NOT NULL,            -- bcrypt hash
+    is_admin   BOOLEAN       NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_users_email (email)
@@ -38,6 +39,36 @@ CREATE TABLE IF NOT EXISTS products (
     PRIMARY KEY (id),
     CONSTRAINT chk_price  CHECK (price  >= 0),
     CONSTRAINT chk_stock  CHECK (stock  >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 4. ORDERS table
+-- ============================================================
+CREATE TABLE IF NOT EXISTS orders (
+    id         INT             NOT NULL AUTO_INCREMENT,
+    user_id    INT             NOT NULL,
+    total      DECIMAL(10, 2)  NOT NULL,
+    created_at TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_order_total CHECK (total >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 5. ORDER_ITEMS table
+-- ============================================================
+CREATE TABLE IF NOT EXISTS order_items (
+    id           INT             NOT NULL AUTO_INCREMENT,
+    order_id     INT             NOT NULL,
+    product_id   INT,
+    quantity     INT             NOT NULL,
+    price_at_purchase DECIMAL(10, 2) NOT NULL,
+    created_at   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+    CONSTRAINT chk_oi_quantity CHECK (quantity > 0),
+    CONSTRAINT chk_oi_price CHECK (price_at_purchase >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -93,3 +124,26 @@ INSERT INTO products (title, description, price, image_url, stock) VALUES
  59.99,
  'https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRmWVJLHhOJvKvgfhfbzpuwv-tmASWNrF2CsAcw2I-mRDfs4f8TLzW9SNZLEwqVW3bW_GfjrEC9Udc9s4Jo9KxE42wY-1RM4Q5UdCzdoecFULCx8Sa6iPPfemtSvGJeE0CIJDaH0Q&usqp=CAc',
  14);
+
+-- ============================================================
+-- 5. Seed — Admin user and regular user
+--    Password: admin123 (bcrypt) and user123 (bcrypt)
+-- ============================================================
+INSERT INTO users (name, email, password, is_admin) VALUES
+('Admin User', 'admin@acommerce.local', '\\\.hxHJQaC2H4K.6xvPseQj5j9liFPE3q1Jdvz7qI2SoEXTq.HdO', TRUE),
+('John Customer', 'customer@acommerce.local', '\\\.kzN2q2L3q0p1r2s3t4u5v6w7x8.', FALSE);
+
+-- ============================================================
+-- 6. Seed — Sample orders for sales tracking
+-- ============================================================
+INSERT INTO orders (user_id, total, created_at) VALUES
+(2, 484.94, DATE_SUB(NOW(), INTERVAL 7 DAY)),
+(2, 239.94, DATE_SUB(NOW(), INTERVAL 5 DAY)),
+(2, 349.99, DATE_SUB(NOW(), INTERVAL 2 DAY));
+
+INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase) VALUES
+(1, 1, 1, 349.99),
+(1, 3, 1, 134.95),
+(2, 5, 1, 189.99),
+(2, 6, 1, 49.95),
+(3, 1, 1, 349.99);

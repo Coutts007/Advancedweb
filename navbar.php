@@ -25,6 +25,12 @@ $cartCount = isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
                         <span class="cart-badge" aria-hidden="true"><?= $cartCount ?></span>
                     <?php endif; ?>
                 </a>
+
+                <?php if (isAdmin()): ?>
+                    <a href="admin-dashboard.php" class="nav-link nav-link--admin <?= basename($_SERVER['PHP_SELF']) === 'admin-dashboard.php' ? 'nav-link--active' : '' ?>">
+                        <span class="nav-icon">📊</span> Admin
+                    </a>
+                <?php endif; ?>
             <?php endif; ?>
         </nav>
 
@@ -60,6 +66,13 @@ $cartCount = isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
                 <a href="cart.php" class="mobile-nav-link">
                     🛒 Cart <?= $cartCount > 0 ? "($cartCount)" : '' ?>
                 </a>
+
+                <?php if (isAdmin()): ?>
+                    <a href="admin-dashboard.php" class="mobile-nav-link">
+                        📊 Admin Dashboard
+                    </a>
+                <?php endif; ?>
+
                 <div class="mobile-divider"></div>
                 <span class="mobile-user">
                     👋 <?= htmlspecialchars($_SESSION['user_name'], ENT_QUOTES, 'UTF-8') ?>

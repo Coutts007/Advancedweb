@@ -28,7 +28,7 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL) || empty($password)) {
 
 // ── Lookup user by email ──────────────────────────────────────
 $pdo  = getPDO();
-$stmt = $pdo->prepare('SELECT id, name, email, password FROM users WHERE email = ? LIMIT 1');
+$stmt = $pdo->prepare('SELECT id, name, email, password, is_admin FROM users WHERE email = ? LIMIT 1');
 $stmt->execute([$email]);
 $user = $stmt->fetch();
 
@@ -51,6 +51,7 @@ session_regenerate_id(true);
 $_SESSION['user_id']   = (int) $user['id'];
 $_SESSION['user_name'] = $user['name'];
 $_SESSION['user_email'] = $user['email'];
+$_SESSION['is_admin'] = (bool) $user['is_admin'];
 $_SESSION['logged_in_at'] = time();
 
 // Rotate CSRF token after login
