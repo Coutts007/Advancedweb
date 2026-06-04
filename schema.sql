@@ -130,8 +130,8 @@ INSERT INTO products (title, description, price, image_url, stock) VALUES
 --    Password: admin123 (bcrypt) and user123 (bcrypt)
 -- ============================================================
 INSERT INTO users (name, email, password, is_admin) VALUES
-('Admin User', 'admin@acommerce.local', '\\\.hxHJQaC2H4K.6xvPseQj5j9liFPE3q1Jdvz7qI2SoEXTq.HdO', TRUE),
-('John Customer', 'customer@acommerce.local', '\\\.kzN2q2L3q0p1r2s3t4u5v6w7x8.', FALSE);
+('Admin User', 'admin@acommerce.local', '$2y$10$UD.OwkFVQn8SXRFPwGaBout1zHNehTxtOy4fKF7jL0j6aFWgxKlMO', TRUE),
+('John Customer', 'customer@acommerce.local', '$2y$10$NJKw1ffUGSAcZWR/H3oRcudREnioPMsLZOS.GjSxwlyf39DcrbLo.', FALSE);
 
 -- ============================================================
 -- 6. Seed — Sample orders for sales tracking
