@@ -20,9 +20,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'remove_item') {
         $productId = filter_input(INPUT_POST, 'product_id', FILTER_VALIDATE_INT);
+        $success = false;
+        $message = 'Item not found in cart.';
         if ($productId && isset($_SESSION['cart'][$productId])) {
             unset($_SESSION['cart'][$productId]);
-            setFlash('success', 'Item removed from cart.');
+            $success = true;
+            $message = 'Item removed from cart.';
+            setFlash('success', $message);
+        }
+        
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            $cartTotal = 0;
+            $cartCount = 0;
+            $pdo = getPDO();
+            if (!empty($_SESSION['cart'])) {
+                $productIds = array_keys($_SESSION['cart']);
+                $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+                $stmt = $pdo->prepare("SELECT id, price FROM products WHERE id IN ($placeholders)");
+                $stmt->execute($productIds);
+                $products = $stmt->fetchAll();
+                foreach ($products as $p) {
+                    $qty = $_SESSION['cart'][$p['id']];
+                    $cartTotal += $p['price'] * $qty;
+                    $cartCount += $qty;
+                }
+            }
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => $success,
+                'message' => $message,
+                'cart_total' => number_format((float) $cartTotal, 2),
+                'cart_count' => $cartCount
+            ]);
+            exit;
         }
         redirect('cart.php');
     }
@@ -30,25 +60,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'update_quantity') {
         $productId = filter_input(INPUT_POST, 'product_id', FILTER_VALIDATE_INT);
         $quantity = filter_input(INPUT_POST, 'quantity', FILTER_VALIDATE_INT);
+        $adjust = $_POST['adjust'] ?? null;
+        $success = false;
+        $message = '';
+        $removed = false;
+        $itemPrice = 0;
+        $itemTotal = 0;
+        $itemCurrency = 'Ksh';
 
         if ($productId && $quantity !== false) {
+            // Server-side fallback adjustment if JS didn't modify the input
+            if ($adjust === 'minus') {
+                $quantity = $quantity - 1;
+            } elseif ($adjust === 'plus') {
+                $quantity = $quantity + 1;
+            }
+
             if ($quantity <= 0) {
                 unset($_SESSION['cart'][$productId]);
+                $success = true;
+                $message = 'Item removed from cart.';
+                $removed = true;
                 setFlash('success', 'Item removed from cart.');
             } else {
                 // Verify product exists and has stock
                 $pdo = getPDO();
-                $stmt = $pdo->prepare('SELECT stock FROM products WHERE id = ? LIMIT 1');
+                $stmt = $pdo->prepare('SELECT stock, price, currency FROM products WHERE id = ? LIMIT 1');
                 $stmt->execute([$productId]);
                 $product = $stmt->fetch();
 
                 if ($product && $quantity <= $product['stock']) {
                     $_SESSION['cart'][$productId] = $quantity;
+                    $success = true;
+                    $message = 'Cart updated.';
+                    $removed = false;
+                    $itemPrice = $product['price'];
+                    $itemTotal = $product['price'] * $quantity;
+                    $itemCurrency = $product['currency'];
                     setFlash('success', 'Cart updated.');
                 } else {
+                    $success = false;
+                    $message = 'Invalid quantity or insufficient stock.';
+                    $removed = false;
                     setFlash('warning', 'Invalid quantity or insufficient stock.');
                 }
             }
+        }
+
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            // Recalculate cart total and count
+            $cartTotal = 0;
+            $cartCount = 0;
+            $cartCurrency = 'Ksh';
+            $pdo = getPDO();
+            if (!empty($_SESSION['cart'])) {
+                $productIds = array_keys($_SESSION['cart']);
+                $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+                $stmt = $pdo->prepare("SELECT id, price, currency FROM products WHERE id IN ($placeholders)");
+                $stmt->execute($productIds);
+                $products = $stmt->fetchAll();
+                if (!empty($products)) {
+                    $cartCurrency = $products[0]['currency'];
+                }
+                foreach ($products as $p) {
+                    $qty = $_SESSION['cart'][$p['id']];
+                    $cartTotal += $p['price'] * $qty;
+                    $cartCount += $qty;
+                }
+            }
+
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => $success,
+                'message' => $message,
+                'removed' => $removed,
+                'item_price_formatted' => htmlspecialchars($itemCurrency, ENT_QUOTES, 'UTF-8') . ' ' . number_format((float) $itemPrice, 2),
+                'item_total_formatted' => htmlspecialchars($itemCurrency, ENT_QUOTES, 'UTF-8') . ' ' . number_format((float) $itemTotal, 2),
+                'cart_total' => number_format((float) $cartTotal, 2),
+                'cart_count' => $cartCount,
+                'cart_currency' => htmlspecialchars($cartCurrency, ENT_QUOTES, 'UTF-8')
+            ]);
+            exit;
         }
         redirect('cart.php');
     }
@@ -143,7 +235,7 @@ if (!empty($_SESSION['cart'])) {
     $productIds = array_keys($_SESSION['cart']);
     $placeholders = implode(',', array_fill(0, count($productIds), '?'));
     
-    $stmt = $pdo->prepare("SELECT id, title, price, image_url, stock FROM products WHERE id IN ($placeholders)");
+    $stmt = $pdo->prepare("SELECT id, title, price, image_url, stock, currency FROM products WHERE id IN ($placeholders)");
     $stmt->execute($productIds);
     $products = $stmt->fetchAll();
 
@@ -160,6 +252,7 @@ if (!empty($_SESSION['cart'])) {
             'stock' => $product['stock'],
             'quantity' => $quantity,
             'itemTotal' => $itemTotal,
+            'currency' => $product['currency'],
         ];
     }
 }
@@ -170,6 +263,7 @@ if (empty($_SESSION['csrf_token'])) {
 }
 $csrfToken = $_SESSION['csrf_token'];
 $cartCount = isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
+$cartCurrency = !empty($cartItems) ? $cartItems[0]['currency'] : 'Ksh';
 $flash = getFlash();
 ?>
 <!DOCTYPE html>
@@ -187,6 +281,12 @@ $flash = getFlash();
 <body class="cart-page">
 
 <?php include 'navbar.php'; ?>
+
+<!-- Toast notification -->
+<div class="toast" id="cart-toast" role="status" aria-live="polite" aria-atomic="true">
+    <span class="toast-icon">🛒</span>
+    <span class="toast-text" id="toast-text"></span>
+</div>
 
 <main id="main-content">
     <section class="cart-section" aria-labelledby="cart-heading">
@@ -241,7 +341,7 @@ $flash = getFlash();
                                     <div class="cart-item-details">
                                         <h3 class="cart-item-title"><?= htmlspecialchars($item['title'], ENT_QUOTES, 'UTF-8') ?></h3>
                                         <div class="cart-item-price-stock">
-                                            <span class="cart-item-price">$<?= number_format((float) $item['price'], 2) ?></span>
+                                            <span class="cart-item-price"><?= htmlspecialchars($item['currency'], ENT_QUOTES, 'UTF-8') ?> <?= number_format((float) $item['price'], 2) ?></span>
                                             <span class="cart-item-stock-info">Stock: <?= (int) $item['stock'] ?></span>
                                         </div>
                                     </div>
@@ -274,7 +374,7 @@ $flash = getFlash();
                                         <!-- Item Total -->
                                         <div class="cart-item-total">
                                             <span class="cart-item-total-label">Total</span>
-                                            <span class="cart-item-total-amount">$<?= number_format((float) $item['itemTotal'], 2) ?></span>
+                                            <span class="cart-item-total-amount"><?= htmlspecialchars($item['currency'], ENT_QUOTES, 'UTF-8') ?> <?= number_format((float) $item['itemTotal'], 2) ?></span>
                                         </div>
 
                                         <!-- Remove Button -->
@@ -299,7 +399,7 @@ $flash = getFlash();
 
                             <div class="summary-row">
                                 <span>Subtotal</span>
-                                <span>$<?= number_format((float) $cartTotal, 2) ?></span>
+                                <span><?= htmlspecialchars($cartCurrency, ENT_QUOTES, 'UTF-8') ?> <?= number_format((float) $cartTotal, 2) ?></span>
                             </div>
                             <div class="summary-row">
                                 <span>Shipping</span>
@@ -314,7 +414,7 @@ $flash = getFlash();
 
                             <div class="summary-row summary-row--total">
                                 <span>Total</span>
-                                <span>$<?= number_format((float) $cartTotal, 2) ?></span>
+                                <span><?= htmlspecialchars($cartCurrency, ENT_QUOTES, 'UTF-8') ?> <?= number_format((float) $cartTotal, 2) ?></span>
                             </div>
 
                             <!-- Checkout Form -->
@@ -373,26 +473,189 @@ if (flashAlert) {
     }, 5000);
 }
 
-// Handle quantity buttons
-function validateQuantity(form) {
-    const quantityInput = form.querySelector('.qty-input');
-    const adjust = form.querySelector('button[type="submit"]:active');
-    
-    if (adjust) {
-        const currentQty = parseInt(quantityInput.value) || 1;
-        const maxQty = parseInt(quantityInput.max) || 999;
+// ── Toast notification ────────────────────────────────────────
+let toastTimer;
+function showToast(message, type = 'success') {
+    const toast    = document.getElementById('cart-toast');
+    const toastTxt = document.getElementById('toast-text');
+    if (!toast || !toastTxt) return;
 
-        if (adjust.value === 'minus' && currentQty > 1) {
-            quantityInput.value = currentQty - 1;
-        } else if (adjust.value === 'plus' && currentQty < maxQty) {
-            quantityInput.value = currentQty + 1;
-        } else if (adjust.value === 'plus') {
-            alert('Maximum available quantity reached.');
-            return false;
-        }
-    }
-    return true;
+    toastTxt.textContent    = message;
+    toast.dataset.type      = type;
+    toast.querySelector('.toast-icon').textContent = type === 'error' ? '❌' : '🛒';
+
+    toast.classList.add('toast--visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('toast--visible'), 3000);
 }
+
+// ── Update Cart Badge counter in navbar ───────────────────────
+function updateCartBadge(count) {
+    let badge = document.querySelector('.cart-badge');
+    const cartLink = document.querySelector('.nav-link--cart');
+    if (!cartLink) return;
+
+    if (count > 0) {
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className   = 'cart-badge';
+            badge.setAttribute('aria-hidden', 'true');
+            cartLink.appendChild(badge);
+        }
+        badge.textContent = count;
+    } else if (badge) {
+        badge.remove();
+    }
+}
+
+// Handle plus and minus buttons via AJAX
+document.querySelectorAll('.qty-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const form = btn.form;
+        const input = form.querySelector('.qty-input');
+        const maxStock = parseInt(input.max) || 999;
+        let val = parseInt(input.value) || 1;
+        const productId = form.querySelector('[name="product_id"]').value;
+        const csrfToken = form.querySelector('[name="csrf_token"]').value;
+
+        let newVal = val;
+        if (btn.classList.contains('qty-btn--minus')) {
+            if (val <= 1) {
+                if (!confirm('Remove this item from cart?')) {
+                    return;
+                }
+                newVal = 0;
+            } else {
+                newVal--;
+            }
+        } else if (btn.classList.contains('qty-btn--plus')) {
+            if (val >= maxStock) {
+                alert('Maximum available quantity reached.');
+                return;
+            }
+            newVal++;
+        }
+
+        try {
+            const response = await fetch('cart.php', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: new URLSearchParams({
+                    action: 'update_quantity',
+                    product_id: productId,
+                    quantity: newVal,
+                    csrf_token: csrfToken
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                if (data.removed) {
+                    // Remove item card from DOM
+                    const card = btn.closest('.cart-item');
+                    if (card) {
+                        card.style.opacity = '0';
+                        card.style.transition = 'opacity 0.3s ease';
+                        setTimeout(() => {
+                            card.remove();
+                            // If cart is now empty, reload to show empty state
+                            if (document.querySelectorAll('.cart-item').length === 0) {
+                                window.location.reload();
+                            }
+                        }, 300);
+                    }
+                    showToast('Item removed from cart.');
+                } else {
+                    // Update value and totals in DOM
+                    input.value = newVal;
+                    const card = btn.closest('.cart-item');
+                    if (card) {
+                        const totalEl = card.querySelector('.cart-item-total-amount');
+                        if (totalEl) totalEl.textContent = data.item_total_formatted;
+                    }
+                    showToast('Cart updated.');
+                }
+
+                // Update order summary subtotal & total
+                const subtotalEl = document.querySelector('.summary-row:nth-child(2) span:last-child');
+                const totalEl = document.querySelector('.summary-row--total span:last-child');
+                if (subtotalEl) subtotalEl.textContent = data.cart_currency + ' ' + data.cart_total;
+                if (totalEl) totalEl.textContent = data.cart_currency + ' ' + data.cart_total;
+
+                updateCartBadge(data.cart_count);
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to update quantity.', 'error');
+        }
+    });
+});
+
+// Handle item removal via AJAX
+document.querySelectorAll('.cart-item-remove-form').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!confirm('Remove this item from cart?')) {
+            return;
+        }
+
+        const productId = form.querySelector('[name="product_id"]').value;
+        const csrfToken = form.querySelector('[name="csrf_token"]').value;
+
+        try {
+            const response = await fetch('cart.php', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: new URLSearchParams({
+                    action: 'remove_item',
+                    product_id: productId,
+                    csrf_token: csrfToken
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const card = form.closest('.cart-item');
+                if (card) {
+                    card.style.opacity = '0';
+                    card.style.transition = 'opacity 0.3s ease';
+                    setTimeout(() => {
+                        card.remove();
+                        if (document.querySelectorAll('.cart-item').length === 0) {
+                            window.location.reload();
+                        }
+                    }, 300);
+                }
+                showToast('Item removed from cart.');
+
+                // Update order summary subtotal & total
+                const subtotalEl = document.querySelector('.summary-row:nth-child(2) span:last-child');
+                const totalEl = document.querySelector('.summary-row--total span:last-child');
+                const cartCurrency = document.querySelector('.cart-item-price')?.textContent.split(' ')[0] || 'Ksh';
+                if (subtotalEl) subtotalEl.textContent = cartCurrency + ' ' + data.cart_total;
+                if (totalEl) totalEl.textContent = cartCurrency + ' ' + data.cart_total;
+
+                updateCartBadge(data.cart_count);
+            } else {
+                showToast(data.message, 'error');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to remove item.', 'error');
+        }
+    });
+});
 </script>
 </body>
 </html>

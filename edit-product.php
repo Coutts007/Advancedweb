@@ -12,7 +12,7 @@ if (!$product_id || $product_id < 1) {
 }
 
 $pdo = getPDO();
-$stmt = $pdo->prepare('SELECT id, title, description, price, stock, image_url FROM products WHERE id = ? LIMIT 1');
+$stmt = $pdo->prepare('SELECT id, title, description, price, stock, image_url, currency FROM products WHERE id = ? LIMIT 1');
 $stmt->execute([$product_id]);
 $product = $stmt->fetch();
 
@@ -82,7 +82,13 @@ $flash = getFlash();
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="price" class="form-label">Price (USD) *</label>
+                            <label for="currency" class="form-label">Currency *</label>
+                            <input type="text" id="currency" name="currency" required class="form-input" 
+                                   value="<?= htmlspecialchars($product['currency'] ?? 'Ksh', ENT_QUOTES, 'UTF-8') ?>" style="padding-left: var(--space-md);">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="price" class="form-label">Price *</label>
                             <input type="number" id="price" name="price" required step="0.01" min="0" class="form-input" 
                                    value="<?= htmlspecialchars($product['price'], ENT_QUOTES, 'UTF-8') ?>" style="padding-left: var(--space-md);">
                         </div>

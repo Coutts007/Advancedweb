@@ -19,11 +19,14 @@ $cartCount = isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
             </a>
 
             <?php if (isLoggedIn()): ?>
-                <a href="cart.php" class="nav-link nav-link--cart <?= basename($_SERVER['PHP_SELF']) === 'cart.php' ? 'nav-link--active' : '' ?>" aria-label="Shopping cart, <?= $cartCount ?> items">
+                <a href="cart.php" class="nav-link nav-link--cart <?= basename($_SERVER['PHP_SELF']) === 'cart.php' ? 'nav-link--active' : '' ?>">
                     <span class="nav-icon">🛒</span> Cart
                     <?php if ($cartCount > 0): ?>
                         <span class="cart-badge" aria-hidden="true"><?= $cartCount ?></span>
                     <?php endif; ?>
+                </a>
+                <a href="profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'profile.php' ? 'nav-link--active' : '' ?>">
+                    <span class="nav-icon">👤</span> Profile
                 </a>
 
                 <?php if (isManager()): ?>
@@ -70,6 +73,9 @@ $cartCount = isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
             <?php if (isLoggedIn()): ?>
                 <a href="cart.php" class="mobile-nav-link">
                     🛒 Cart <?= $cartCount > 0 ? "($cartCount)" : '' ?>
+                </a>
+                <a href="profile.php" class="mobile-nav-link">
+                    👤 Profile
                 </a>
 
                 <?php if (isManager()): ?>

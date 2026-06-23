@@ -38,7 +38,7 @@ if (!empty($pending_orders)) {
     $pending_ids = array_column($pending_orders, 'id');
     $placeholders = implode(',', array_fill(0, count($pending_ids), '?'));
     $stmt = $pdo->prepare(
-        "SELECT oi.order_id, p.title as product_title, oi.quantity, oi.price_at_purchase
+        "SELECT oi.order_id, p.title as product_title, oi.quantity, oi.price_at_purchase, p.currency
          FROM order_items oi
          LEFT JOIN products p ON oi.product_id = p.id
          WHERE oi.order_id IN ($placeholders)"
@@ -77,6 +77,12 @@ $flash = getFlash();
 <body class="admin-page">
 
 <?php include 'navbar.php'; ?>
+
+<!-- Toast notification -->
+<div class="toast" id="cart-toast" role="status" aria-live="polite" aria-atomic="true">
+    <span class="toast-icon">🛒</span>
+    <span class="toast-text" id="toast-text"></span>
+</div>
 
 <main id="main-content" class="admin-main">
     <section class="admin-section">
@@ -160,7 +166,7 @@ $flash = getFlash();
                                                         <li>
                                                             <?= htmlspecialchars($item['product_title'] ?? 'Deleted Product', ENT_QUOTES, 'UTF-8') ?> 
                                                             <strong>x<?= (int) $item['quantity'] ?></strong> 
-                                                            <span style="color: var(--clr-text-muted);">($<?= number_format((float) $item['price_at_purchase'], 2) ?> each)</span>
+                                                            <span style="color: var(--clr-text-muted);">(<?= htmlspecialchars($item['currency'] ?? 'Ksh', ENT_QUOTES, 'UTF-8') ?> <?= number_format((float) $item['price_at_purchase'], 2) ?> each)</span>
                                                         </li>
                                                     <?php endforeach; ?>
                                                 <?php else: ?>
@@ -168,7 +174,15 @@ $flash = getFlash();
                                                 <?php endif; ?>
                                             </ul>
                                         </td>
-                                        <td><strong style="color: var(--clr-primary);">$<?= number_format((float) $order['total'], 2) ?></strong></td>
+                                        <td>
+                                            <?php 
+                                                $orderCurrency = 'Ksh';
+                                                if (isset($order_items_map[$order['id']]) && !empty($order_items_map[$order['id']])) {
+                                                    $orderCurrency = $order_items_map[$order['id']][0]['currency'] ?? 'Ksh';
+                                                }
+                                            ?>
+                                            <strong style="color: var(--clr-primary);"><?= htmlspecialchars($orderCurrency, ENT_QUOTES, 'UTF-8') ?> <?= number_format((float) $order['total'], 2) ?></strong>
+                                        </td>
                                         <td><?= date('M d, Y h:i A', strtotime($order['created_at'])) ?></td>
                                         <td>
                                             <div style="display: flex; gap: var(--space-xs);">
@@ -235,7 +249,7 @@ $flash = getFlash();
                                                 <span><strong><?= htmlspecialchars($product['title'], ENT_QUOTES, 'UTF-8') ?></strong></span>
                                             </div>
                                         </td>
-                                        <td>$<?= number_format((float) $product['price'], 2) ?></td>
+                                        <td><?= htmlspecialchars($product['currency'], ENT_QUOTES, 'UTF-8') ?> <?= number_format((float) $product['price'], 2) ?></td>
                                         <td>
                                             <form class="inline-form" method="POST" action="manager-handler.php" onsubmit="return validateStockForm(this)">
                                                 <input type="hidden" name="action" value="update_stock">
@@ -288,13 +302,18 @@ $flash = getFlash();
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="price" class="form-label">Price (USD) *</label>
-                            <input type="number" id="price" name="price" required step="0.01" min="0" class="form-input" placeholder="0.00">
+                            <label for="currency" class="form-label">Currency *</label>
+                            <input type="text" id="currency" name="currency" required class="form-input" value="Ksh" placeholder="e.g., Ksh" style="padding-left: var(--space-md);">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="price" class="form-label">Price *</label>
+                            <input type="number" id="price" name="price" required step="0.01" min="0" class="form-input" placeholder="0.00" style="padding-left: var(--space-md);">
                         </div>
 
                         <div class="form-group">
                             <label for="stock" class="form-label">Initial Stock *</label>
-                            <input type="number" id="stock" name="stock" required min="0" class="form-input" placeholder="0">
+                            <input type="number" id="stock" name="stock" required min="0" class="form-input" placeholder="0" style="padding-left: var(--space-md);">
                         </div>
                     </div>
 
@@ -361,16 +380,217 @@ if (flashAlert) {
     }, 5000);
 }
 
-// Validate stock form
-function validateStockForm(form) {
-    const input = form.querySelector('[name="stock"]');
-    const value = parseInt(input.value);
-    if (isNaN(value) || value < 0) {
-        alert('Stock must be a non-negative number.');
-        return false;
-    }
-    return true;
+// ── Toast notification ────────────────────────────────────────
+let toastTimer;
+function showToast(message, type = 'success') {
+    const toast    = document.getElementById('cart-toast');
+    const toastTxt = document.getElementById('toast-text');
+    if (!toast || !toastTxt) return;
+
+    toastTxt.textContent    = message;
+    toast.dataset.type      = type;
+    toast.querySelector('.toast-icon').textContent = type === 'error' ? '❌' : '⚙️';
+
+    toast.classList.add('toast--visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('toast--visible'), 3000);
 }
+
+// ── Update Dashboard Stats ────────────────────────────────────
+function updateStats(stats) {
+    if (!stats) return;
+    
+    // Pending checkouts count card
+    const pendingCard = document.querySelector('.admin-stats-grid .stat-card:nth-child(1) .stat-value');
+    if (pendingCard) pendingCard.textContent = stats.pending_checkouts;
+
+    // Total products count card
+    const productsCard = document.querySelector('.admin-stats-grid .stat-card:nth-child(2) .stat-value');
+    if (productsCard) productsCard.textContent = stats.total_products;
+
+    // Low stock count card
+    const lowStockCard = document.querySelector('.admin-stats-grid .stat-card:nth-child(3) .stat-value');
+    if (lowStockCard) lowStockCard.textContent = stats.low_stock_items;
+
+    // Tab button text count for checkouts tab
+    const checkoutsTabBtn = document.querySelector('.admin-tab-btn[data-tab="checkouts"]');
+    if (checkoutsTabBtn) {
+        checkoutsTabBtn.innerHTML = `🛎️ Pending Checkouts (${stats.pending_checkouts})`;
+    }
+}
+
+// ── AJAX Stock update and Delete product handlers ─────────────
+document.querySelectorAll('.inline-form').forEach(form => {
+    const actionInput = form.querySelector('[name="action"]');
+    if (!actionInput) return;
+    const action = actionInput.value;
+    
+    if (action === 'update_stock') {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = form.querySelector('[name="stock"]');
+            const val = parseInt(input.value);
+            if (isNaN(val) || val < 0) {
+                alert('Stock must be a non-negative number.');
+                return;
+            }
+
+            const productId = form.querySelector('[name="product_id"]').value;
+            const csrfToken = form.querySelector('[name="csrf_token"]').value;
+
+            try {
+                const response = await fetch('manager-handler.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        action: 'update_stock',
+                        product_id: productId,
+                        stock: val,
+                        csrf_token: csrfToken
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    updateStats(data.stats);
+                    
+                    // Update the status badge inline
+                    const row = form.closest('tr');
+                    if (row) {
+                        const statusBadge = row.querySelector('.product-status');
+                        if (statusBadge) {
+                            statusBadge.textContent = data.status_text;
+                            statusBadge.className = 'product-status ' + data.status_class;
+                        }
+                    }
+                } else {
+                    showToast(data.message, 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('Failed to update stock.', 'error');
+            }
+        });
+    }
+
+    if (action === 'delete_product') {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!confirm('Delete this product? This action cannot be undone.')) {
+                return;
+            }
+
+            const productId = form.querySelector('[name="product_id"]').value;
+            const csrfToken = form.querySelector('[name="csrf_token"]').value;
+
+            try {
+                const response = await fetch('manager-handler.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        action: 'delete_product',
+                        product_id: productId,
+                        csrf_token: csrfToken
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    updateStats(data.stats);
+                    
+                    // Animate and remove product row
+                    const row = form.closest('tr');
+                    if (row) {
+                        row.style.opacity = '0';
+                        row.style.transition = 'opacity 0.3s ease';
+                        setTimeout(() => {
+                            row.remove();
+                            if (document.querySelectorAll('#products-tab tbody tr').length === 0) {
+                                window.location.reload();
+                            }
+                        }, 300);
+                    }
+                } else {
+                    showToast(data.message, 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('Failed to delete product.', 'error');
+            }
+        });
+    }
+});
+
+// ── AJAX Confirm and Cancel checkout handlers ─────────────────
+document.querySelectorAll('form[action="manager-handler.php"]').forEach(form => {
+    const actionInput = form.querySelector('[name="action"]');
+    if (!actionInput) return;
+    const action = actionInput.value;
+
+    if (action === 'confirm_checkout' || action === 'cancel_checkout') {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const confirmMsg = action === 'confirm_checkout' 
+                ? 'Confirm this checkout? This will decrement product stock.'
+                : 'Cancel this customer checkout?';
+                
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            const orderId = form.querySelector('[name="order_id"]').value;
+            const csrfToken = form.querySelector('[name="csrf_token"]').value;
+
+            try {
+                const response = await fetch('manager-handler.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({
+                        action: action,
+                        order_id: orderId,
+                        csrf_token: csrfToken
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    updateStats(data.stats);
+                    
+                    // Remove order row
+                    const row = form.closest('tr');
+                    if (row) {
+                        row.style.opacity = '0';
+                        row.style.transition = 'opacity 0.3s ease';
+                        setTimeout(() => {
+                            row.remove();
+                            if (document.querySelectorAll('#checkouts-tab tbody tr').length === 0) {
+                                window.location.reload();
+                            }
+                        }, 300);
+                    }
+                } else {
+                    showToast(data.message, 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('Action failed.', 'error');
+            }
+        });
+    }
+});
 </script>
 </body>
 </html>

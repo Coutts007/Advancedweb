@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // ── Fetch all products ────────────────────────────────────────
 $pdo      = getPDO();
-$stmt     = $pdo->query('SELECT id, title, description, price, image_url, stock FROM products ORDER BY id ASC');
+$stmt     = $pdo->query('SELECT id, title, description, price, image_url, stock, currency FROM products ORDER BY id ASC');
 $products = $stmt->fetchAll();
 
 // Generate CSRF token for cart AJAX calls
@@ -191,7 +191,7 @@ $flash = getFlash();
 
                                 <div class="card-footer">
                                     <div class="card-price-block">
-                                        <span class="card-price">$<?= number_format((float) $product['price'], 2) ?></span>
+                                        <span class="card-price"><?= htmlspecialchars($product['currency'], ENT_QUOTES, 'UTF-8') ?> <?= number_format((float) $product['price'], 2) ?></span>
                                         <span class="card-stock <?= $inStock ? 'card-stock--in' : 'card-stock--out' ?>">
                                             <?= $inStock ? '✅ In Stock' : '❌ Sold Out' ?>
                                         </span>
@@ -246,8 +246,18 @@ document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
         const productId = btn.dataset.productId;
         const originalHTML = btn.innerHTML;
+        const card = btn.closest('.product-card');
+        const title = card ? card.querySelector('.card-title').textContent : 'Item';
 
-        // Visual loading state
+        // 1. Immediately show toast notification
+        showToast(title + ' added to cart!', 'success');
+
+        // 2. Immediately increment cart badge (optimistic update)
+        let badge = document.querySelector('.cart-badge');
+        let currentCount = badge ? parseInt(badge.textContent) || 0 : 0;
+        updateCartBadge(currentCount + 1);
+
+        // 3. Visual loading state on the button
         btn.disabled  = true;
         btn.innerHTML = '⏳ Adding...';
 
@@ -265,7 +275,7 @@ document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
             const data = await response.json();
 
             if (data.success) {
-                showToast(data.message);
+                // Ensure count is exact from server
                 updateCartBadge(data.cart_count);
                 btn.innerHTML = '✅ Added!';
                 setTimeout(() => {
@@ -273,7 +283,9 @@ document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
                     btn.disabled  = false;
                 }, 1800);
             } else {
+                // Revert optimistic updates
                 showToast(data.message, 'error');
+                updateCartBadge(currentCount);
                 btn.innerHTML = originalHTML;
                 btn.disabled  = (btn.textContent.trim() === 'Sold Out' || btn.textContent.trim() === 'Max in Cart');
             }
