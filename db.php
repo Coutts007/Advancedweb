@@ -113,7 +113,26 @@ function requireLogin(): void
  */
 function isAdmin(): bool
 {
-    return isset($_SESSION['user_id']) && isset($_SESSION['is_admin']) && $_SESSION['is_admin'] === true;
+    return isset($_SESSION['user_id']) && isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
+}
+
+/**
+ * Return true if the current user is a manager or admin.
+ */
+function isManager(): bool
+{
+    return isset($_SESSION['user_id']) && isset($_SESSION['role']) && ($_SESSION['role'] === 'manager' || $_SESSION['role'] === 'admin');
+}
+
+/**
+ * Require manager access — redirect non-managers to homepage.
+ */
+function requireManager(): void
+{
+    if (!isManager()) {
+        setFlash('error', 'You do not have permission to access that page.');
+        redirect('index.php');
+    }
 }
 
 /**
@@ -126,3 +145,4 @@ function requireAdmin(): void
         redirect('index.php');
     }
 }
+

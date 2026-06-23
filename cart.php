@@ -62,9 +62,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'checkout') {
         if (empty($_SESSION['cart'])) {
             setFlash('warning', 'Your cart is empty.');
-        } else {
-            setFlash('success', 'Order placed successfully! Thank you for your purchase.');
+            redirect('cart.php');
+        }
+
+        $pdo = getPDO();
+        try {
+            $pdo->beginTransaction();
+
+            // Fetch cart products to verify prices and stock
+            $productIds = array_keys($_SESSION['cart']);
+            $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+            $stmt = $pdo->prepare("SELECT id, title, price, stock FROM products WHERE id IN ($placeholders) FOR UPDATE");
+            $stmt->execute($productIds);
+            $products = $stmt->fetchAll();
+
+            $productsMap = [];
+            foreach ($products as $p) {
+                $productsMap[$p['id']] = $p;
+            }
+
+            $orderItemsToInsert = [];
+            $orderTotal = 0;
+
+            foreach ($_SESSION['cart'] as $productId => $qty) {
+                if (!isset($productsMap[$productId])) {
+                    throw new Exception("Product not found.");
+                }
+
+                $p = $productsMap[$productId];
+                if ($p['stock'] < $qty) {
+                    throw new Exception("Insufficient stock for product: " . $p['title']);
+                }
+
+                $itemTotal = $p['price'] * $qty;
+                $orderTotal += $itemTotal;
+
+                $orderItemsToInsert[] = [
+                    'product_id' => $p['id'],
+                    'quantity' => $qty,
+                    'price_at_purchase' => $p['price']
+                ];
+            }
+
+            // Insert order
+            $stmtOrder = $pdo->prepare("INSERT INTO orders (user_id, total, status) VALUES (?, ?, 'pending')");
+            $stmtOrder->execute([$_SESSION['user_id'], $orderTotal]);
+            $orderId = $pdo->lastInsertId();
+
+            // Insert order items
+            $stmtItem = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase) VALUES (?, ?, ?, ?)");
+            foreach ($orderItemsToInsert as $item) {
+                $stmtItem->execute([
+                    $orderId,
+                    $item['product_id'],
+                    $item['quantity'],
+                    $item['price_at_purchase']
+                ]);
+            }
+
+            $pdo->commit();
             $_SESSION['cart'] = [];
+            setFlash('success', 'Order placed successfully! It is pending confirmation from a manager.');
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('Checkout error: ' . $e->getMessage());
+            setFlash('error', 'Checkout failed: ' . $e->getMessage());
         }
         redirect('cart.php');
     }

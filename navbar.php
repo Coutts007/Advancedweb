@@ -26,6 +26,11 @@ $cartCount = isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
                     <?php endif; ?>
                 </a>
 
+                <?php if (isManager()): ?>
+                    <a href="manager-dashboard.php" class="nav-link nav-link--manager <?= basename($_SERVER['PHP_SELF']) === 'manager-dashboard.php' ? 'nav-link--active' : '' ?>">
+                        <span class="nav-icon">📦</span> Manager
+                    </a>
+                <?php endif; ?>
                 <?php if (isAdmin()): ?>
                     <a href="admin-dashboard.php" class="nav-link nav-link--admin <?= basename($_SERVER['PHP_SELF']) === 'admin-dashboard.php' ? 'nav-link--active' : '' ?>">
                         <span class="nav-icon">📊</span> Admin
@@ -67,6 +72,11 @@ $cartCount = isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
                     🛒 Cart <?= $cartCount > 0 ? "($cartCount)" : '' ?>
                 </a>
 
+                <?php if (isManager()): ?>
+                    <a href="manager-dashboard.php" class="mobile-nav-link">
+                        📦 Manager Dashboard
+                    </a>
+                <?php endif; ?>
                 <?php if (isAdmin()): ?>
                     <a href="admin-dashboard.php" class="mobile-nav-link">
                         📊 Admin Dashboard

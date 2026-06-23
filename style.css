@@ -1845,3 +1845,44 @@ ul, ol { list-style: none; }
         height: 25px;
     }
 }
+
+/* ── Role & Order styles for Dashboards ─────────────────────── */
+.role-badge {
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
+    border-radius: 99px;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.role-badge--customer {
+    background: rgba(108, 99, 255, 0.15);
+    color: var(--clr-primary);
+    border: 1px solid rgba(108, 99, 255, 0.3);
+}
+
+.role-badge--manager {
+    background: rgba(243, 156, 18, 0.15);
+    color: #f39c12;
+    border: 1px solid rgba(243, 156, 18, 0.3);
+}
+
+.role-badge--admin {
+    background: rgba(255, 101, 132, 0.15);
+    color: var(--clr-accent);
+    border: 1px solid rgba(255, 101, 132, 0.3);
+}
+
+.order-items-list {
+    margin: 0;
+    padding-left: var(--space-md);
+}
+
+.order-items-list li {
+    font-size: var(--fs-sm);
+    color: var(--clr-text);
+    margin-bottom: 4px;
+    list-style-type: disc;
+}

@@ -12,11 +12,11 @@ try {
 }
 
 // Test admin user exists
-$stmt = $pdo->prepare('SELECT id, name, is_admin FROM users WHERE email = ? LIMIT 1');
+$stmt = $pdo->prepare('SELECT id, name, role FROM users WHERE email = ? LIMIT 1');
 $stmt->execute(['admin@acommerce.local']);
 $admin_user = $stmt->fetch();
 
-if ($admin_user && $admin_user['is_admin']) {
+if ($admin_user && $admin_user['role'] === 'admin') {
     echo "✓ Admin user exists: " . $admin_user['name'] . " (ID: " . $admin_user['id'] . ")\n";
 } else {
     echo "✗ Admin user not found or not admin\n";
@@ -24,11 +24,11 @@ if ($admin_user && $admin_user['is_admin']) {
 }
 
 // Test customer user exists
-$stmt = $pdo->prepare('SELECT id, name, is_admin FROM users WHERE email = ? LIMIT 1');
+$stmt = $pdo->prepare('SELECT id, name, role FROM users WHERE email = ? LIMIT 1');
 $stmt->execute(['customer@acommerce.local']);
 $customer = $stmt->fetch();
 
-if ($customer && !$customer['is_admin']) {
+if ($customer && $customer['role'] === 'customer') {
     echo "✓ Customer user exists: " . $customer['name'] . " (ID: " . $customer['id'] . ")\n";
 } else {
     echo "✗ Customer user not found\n";

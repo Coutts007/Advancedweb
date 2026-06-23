@@ -1,20 +1,28 @@
 <?php
-// admin-dashboard.php — Admin dashboard for product management and sales monitoring
+// admin-dashboard.php — Admin dashboard for user management and sales monitoring
 require_once 'db.php';
 
 // Enforce admin access
 requireAdmin();
 
-// ── Fetch dashboard statistics ────────────────────────────────
 $pdo = getPDO();
 
+// ── Fetch statistics ──────────────────────────────────────────
 // Total revenue and order count
 $stmt = $pdo->query('SELECT COUNT(*) as order_count, COALESCE(SUM(total), 0) as total_revenue FROM orders');
 $stats = $stmt->fetch();
 
-// Recent orders (last 10)
+// Total users count
+$stmt = $pdo->query('SELECT COUNT(*) FROM users');
+$total_users = $stmt->fetchColumn();
+
+// Total products count
+$stmt = $pdo->query('SELECT COUNT(*) FROM products');
+$total_products = $stmt->fetchColumn();
+
+// ── Fetch Recent Orders (last 10) ─────────────────────────────
 $stmt = $pdo->query(
-    'SELECT o.id, o.user_id, u.name as user_name, o.total, o.created_at, COUNT(oi.id) as item_count
+    'SELECT o.id, o.user_id, u.name as user_name, o.total, o.created_at, o.status, COUNT(oi.id) as item_count
      FROM orders o
      LEFT JOIN users u ON o.user_id = u.id
      LEFT JOIN order_items oi ON o.id = oi.order_id
@@ -24,7 +32,7 @@ $stmt = $pdo->query(
 );
 $recent_orders = $stmt->fetchAll();
 
-// Product stats (top sellers, low stock)
+// Product stats (top sellers)
 $stmt = $pdo->query(
     'SELECT p.id, p.title, p.price, p.stock, COUNT(oi.id) as total_sold, SUM(oi.quantity) as quantity_sold
      FROM products p
@@ -34,9 +42,9 @@ $stmt = $pdo->query(
 );
 $products_stats = $stmt->fetchAll();
 
-// All products for management
-$stmt = $pdo->query('SELECT id, title, description, price, stock, image_url, created_at FROM products ORDER BY id DESC');
-$all_products = $stmt->fetchAll();
+// ── Fetch All Users for Management ─────────────────────────────
+$stmt = $pdo->query('SELECT id, name, email, role, created_at FROM users ORDER BY id DESC');
+$all_users = $stmt->fetchAll();
 
 // Generate CSRF token
 if (empty($_SESSION['csrf_token'])) {
@@ -52,7 +60,7 @@ $flash = getFlash();
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin Dashboard — A-Commerce</title>
-    <meta name="description" content="Admin dashboard for product management and sales monitoring." />
+    <meta name="description" content="Admin dashboard for user management and sales monitoring." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -67,7 +75,7 @@ $flash = getFlash();
         <div class="container">
             <div class="section-header">
                 <h1 class="section-title">Admin Dashboard</h1>
-                <p class="section-subtitle">Manage products and monitor sales</p>
+                <p class="section-subtitle">Manage users and monitor sales statistics</p>
             </div>
 
             <!-- Flash message -->
@@ -81,6 +89,10 @@ $flash = getFlash();
             <!-- Dashboard Stats -->
             <div class="admin-stats-grid">
                 <div class="stat-card">
+                    <div class="stat-label">Total Users</div>
+                    <div class="stat-value"><?= (int) $total_users ?></div>
+                </div>
+                <div class="stat-card">
                     <div class="stat-label">Total Orders</div>
                     <div class="stat-value"><?= (int) $stats['order_count'] ?></div>
                 </div>
@@ -90,29 +102,122 @@ $flash = getFlash();
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Total Products</div>
-                    <div class="stat-value"><?= count($all_products) ?></div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Low Stock Items</div>
-                    <div class="stat-value"><?= count(array_filter($all_products, fn($p) => $p['stock'] <= 5 && $p['stock'] > 0)) ?></div>
+                    <div class="stat-value"><?= (int) $total_products ?></div>
                 </div>
             </div>
 
             <!-- Tabs Navigation -->
             <div class="admin-tabs">
-                <button class="admin-tab-btn admin-tab-btn--active" data-tab="sales">
+                <button class="admin-tab-btn admin-tab-btn--active" data-tab="users">
+                    👥 Manage Users (<?= count($all_users) ?>)
+                </button>
+                <button class="admin-tab-btn" data-tab="add-user">
+                    ➕ Add New User
+                </button>
+                <button class="admin-tab-btn" data-tab="sales">
                     📊 Sales & Orders
-                </button>
-                <button class="admin-tab-btn" data-tab="products">
-                    📦 Products
-                </button>
-                <button class="admin-tab-btn" data-tab="add-product">
-                    ➕ Add New Product
                 </button>
             </div>
 
+            <!-- Tab: Manage Users -->
+            <div class="admin-tab-content admin-tab-content--active" id="users-tab">
+                <h2 class="admin-subsection-title">Platform Users</h2>
+                <div class="table-responsive">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>User ID</th>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Registered Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($all_users as $user): ?>
+                                <?php
+                                    $role_badge = 'role-badge--customer';
+                                    if ($user['role'] === 'admin') {
+                                        $role_badge = 'role-badge--admin';
+                                    } elseif ($user['role'] === 'manager') {
+                                        $role_badge = 'role-badge--manager';
+                                    }
+                                ?>
+                                <tr>
+                                    <td>#<?= (int) $user['id'] ?></td>
+                                    <td><strong><?= htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8') ?></strong></td>
+                                    <td><?= htmlspecialchars($user['email'], ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td>
+                                        <span class="role-badge <?= $role_badge ?>">
+                                            <?= ucfirst(htmlspecialchars($user['role'], ENT_QUOTES, 'UTF-8')) ?>
+                                        </span>
+                                    </td>
+                                    <td><?= date('M d, Y', strtotime($user['created_at'])) ?></td>
+                                    <td>
+                                        <div style="display: flex; gap: var(--space-xs);">
+                                            <a href="edit-user.php?id=<?= (int) $user['id'] ?>" class="btn btn--outline btn--sm">Edit</a>
+                                            
+                                            <?php if ((int)$user['id'] !== (int)$_SESSION['user_id']): ?>
+                                                <form method="POST" action="admin-handler.php" style="display: inline;" onsubmit="return confirm('Delete this user? This will remove all their data.');">
+                                                    <input type="hidden" name="action" value="delete_user">
+                                                    <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
+                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                                                    <button type="submit" class="btn btn--danger btn--sm">Delete</button>
+                                                </form>
+                                            <?php else: ?>
+                                                <span style="font-size: var(--fs-xs); color: var(--clr-text-muted); font-style: italic; align-self: center;">Self (Protected)</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab: Add User -->
+            <div class="admin-tab-content" id="add-user-tab">
+                <h2 class="admin-subsection-title">Add New User</h2>
+                <form method="POST" action="admin-handler.php" class="admin-form" style="max-width: 600px;">
+                    <input type="hidden" name="action" value="add_user">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+
+                    <div class="form-group">
+                        <label for="name" class="form-label">Full Name *</label>
+                        <input type="text" id="name" name="name" required class="form-input" placeholder="e.g. Jane Smith" style="padding-left: var(--space-md);">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email" class="form-label">Email Address *</label>
+                        <input type="email" id="email" name="email" required class="form-input" placeholder="e.g. jane@example.com" style="padding-left: var(--space-md);">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="role" class="form-label">System Role *</label>
+                            <select id="role" name="role" required class="form-input" style="padding-left: var(--space-md); padding-right: var(--space-md); background-color: var(--clr-bg-input);">
+                                <option value="customer">Customer</option>
+                                <option value="manager">Store Manager</option>
+                                <option value="admin">Administrator</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password" class="form-label">Password (Min 8 chars) *</label>
+                            <input type="password" id="password" name="password" required class="form-input" placeholder="••••••••" style="padding-left: var(--space-md);">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn--primary btn--lg">
+                        ➕ Add User
+                    </button>
+                </form>
+            </div>
+
             <!-- Tab: Sales & Orders -->
-            <div class="admin-tab-content admin-tab-content--active" id="sales-tab">
+            <div class="admin-tab-content" id="sales-tab">
                 <h2 class="admin-subsection-title">Recent Orders</h2>
                 <?php if (empty($recent_orders)): ?>
                     <div class="empty-state">
@@ -129,16 +234,30 @@ $flash = getFlash();
                                     <th>Customer</th>
                                     <th>Items</th>
                                     <th>Total</th>
+                                    <th>Status</th>
                                     <th>Date</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php foreach ($recent_orders as $order): ?>
+                                    <?php
+                                        $status_class = 'product-status--in-stock';
+                                        if ($order['status'] === 'pending') {
+                                            $status_class = 'product-status--low-stock';
+                                        } elseif ($order['status'] === 'cancelled') {
+                                            $status_class = 'product-status--out-of-stock';
+                                        }
+                                    ?>
                                     <tr>
                                         <td>#<?= (int) $order['id'] ?></td>
                                         <td><?= htmlspecialchars($order['user_name'] ?? 'Unknown', ENT_QUOTES, 'UTF-8') ?></td>
                                         <td><?= (int) $order['item_count'] ?></td>
                                         <td><strong>$<?= number_format((float) $order['total'], 2) ?></strong></td>
+                                        <td>
+                                            <span class="product-status <?= $status_class ?>">
+                                                <?= ucfirst(htmlspecialchars($order['status'], ENT_QUOTES, 'UTF-8')) ?>
+                                            </span>
+                                        </td>
                                         <td><?= date('M d, Y', strtotime($order['created_at'])) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -177,123 +296,10 @@ $flash = getFlash();
                 <?php endif; ?>
             </div>
 
-            <!-- Tab: Product Management -->
-            <div class="admin-tab-content" id="products-tab">
-                <h2 class="admin-subsection-title">Manage Products</h2>
-                <?php if (empty($all_products)): ?>
-                    <div class="empty-state">
-                        <span class="empty-icon" aria-hidden="true">📦</span>
-                        <h3>No products yet</h3>
-                        <p>Add your first product to get started.</p>
-                    </div>
-                <?php else: ?>
-                    <div class="table-responsive">
-                        <table class="admin-table">
-                            <thead>
-                                <tr>
-                                    <th>Product Name</th>
-                                    <th>Price</th>
-                                    <th>Stock</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($all_products as $product): ?>
-                                    <?php
-                                        $status = 'In Stock';
-                                        $status_class = 'product-status--in-stock';
-                                        if ($product['stock'] === 0) {
-                                            $status = 'Out of Stock';
-                                            $status_class = 'product-status--out-of-stock';
-                                        } elseif ($product['stock'] <= 5) {
-                                            $status = 'Low Stock';
-                                            $status_class = 'product-status--low-stock';
-                                        }
-                                    ?>
-                                    <tr>
-                                        <td>
-                                            <div class="product-cell">
-                                                <img src="<?= htmlspecialchars($product['image_url'], ENT_QUOTES, 'UTF-8') ?>" alt="" class="product-thumb" onerror="this.src='https://picsum.photos/seed/fallback/50/50'; this.onerror=null;">
-                                                <span><?= htmlspecialchars($product['title'], ENT_QUOTES, 'UTF-8') ?></span>
-                                            </div>
-                                        </td>
-                                        <td>$<?= number_format((float) $product['price'], 2) ?></td>
-                                        <td>
-                                            <form class="inline-form" method="POST" action="admin-handler.php" onsubmit="return validateStockForm(this)">
-                                                <input type="hidden" name="action" value="update_stock">
-                                                <input type="hidden" name="product_id" value="<?= (int) $product['id'] ?>">
-                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
-                                                <input type="number" name="stock" value="<?= (int) $product['stock'] ?>" min="0" class="stock-input" placeholder="Stock">
-                                                <button type="submit" class="btn-inline">Update</button>
-                                            </form>
-                                        </td>
-                                        <td>
-                                            <span class="product-status <?= $status_class ?>">
-                                                <?= $status ?> (<?= (int) $product['stock'] ?>)
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <form class="inline-form" method="POST" action="admin-handler.php" onsubmit="return confirm('Delete this product? This action cannot be undone.');">
-                                                <input type="hidden" name="action" value="delete_product">
-                                                <input type="hidden" name="product_id" value="<?= (int) $product['id'] ?>">
-                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
-                                                <button type="submit" class="btn btn--danger btn--sm">Delete</button>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <!-- Tab: Add Product -->
-            <div class="admin-tab-content" id="add-product-tab">
-                <h2 class="admin-subsection-title">Add New Product</h2>
-                <form method="POST" action="admin-handler.php" class="admin-form">
-                    <input type="hidden" name="action" value="add_product">
-                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
-
-                    <div class="form-group">
-                        <label for="title" class="form-label">Product Title *</label>
-                        <input type="text" id="title" name="title" required class="form-input" placeholder="e.g., Premium Wireless Headphones">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="description" class="form-label">Description *</label>
-                        <textarea id="description" name="description" required class="form-textarea" rows="4" placeholder="Detailed product description..."></textarea>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="price" class="form-label">Price (USD) *</label>
-                            <input type="number" id="price" name="price" required step="0.01" min="0" class="form-input" placeholder="0.00">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="stock" class="form-label">Initial Stock *</label>
-                            <input type="number" id="stock" name="stock" required min="0" class="form-input" placeholder="0">
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="image_url" class="form-label">Image URL *</label>
-                        <input type="url" id="image_url" name="image_url" required class="form-input" placeholder="https://example.com/image.jpg">
-                    </div>
-
-                    <button type="submit" class="btn btn--primary btn--lg">
-                        ➕ Add Product
-                    </button>
-                </form>
-            </div>
-
         </div>
     </section>
 </main>
 
-<!-- Footer -->
 <footer class="site-footer">
     <div class="container footer-inner">
         <div class="footer-brand">
@@ -301,11 +307,6 @@ $flash = getFlash();
             <span class="brand-name">A-Commerce</span>
         </div>
         <p class="footer-copy">&copy; <?= date('Y') ?> A-Commerce. All rights reserved.</p>
-        <div class="footer-links">
-            <a href="#" class="footer-link">Privacy</a>
-            <a href="#" class="footer-link">Terms</a>
-            <a href="#" class="footer-link">Contact</a>
-        </div>
     </div>
 </footer>
 
@@ -339,17 +340,6 @@ if (flashAlert) {
         flashAlert.style.transition = 'opacity 0.5s';
         setTimeout(() => flashAlert.remove(), 500);
     }, 5000);
-}
-
-// Validate stock form
-function validateStockForm(form) {
-    const input = form.querySelector('[name="stock"]');
-    const value = parseInt(input.value);
-    if (isNaN(value) || value < 0) {
-        alert('Stock must be a non-negative number.');
-        return false;
-    }
-    return true;
 }
 </script>
 </body>
